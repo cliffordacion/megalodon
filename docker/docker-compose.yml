@@ -15,7 +15,7 @@
             dns:
                 - 127.0.0.1
         microservice_base_fpm:
-            build: ./microservices/base/php-fpm
+            build: ./microservices/base/php-fpm/
             links: 
                 - autodiscovery
             expose:
@@ -23,3 +23,14 @@
             environment:
                 - BACKEND=microservice_base_nginx
                 - CONSUL=autodiscovery
+
+        microservice_base_nginx:
+            build: ./microservices/base/nginx/
+            links:
+                - autodiscovery
+                - microservice_base_fpm
+            environment:
+                - BACKEND=microservice_base_fpm
+                - CONSUL=autodiscovery
+            ports:
+                - 8080:80
