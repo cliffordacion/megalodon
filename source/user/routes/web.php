@@ -14,3 +14,22 @@
 $router->get('/', function () use ($router) {
     return $router->app->version();
 });
+
+$router->group(
+   [  
+      'middware' => 'api_key',
+      'prefix' => 'api/v1',
+      'namespace' => '\App\Http\Controllers'
+   ],
+   function ($router) {
+      $router->get('user', 'UserController@index');
+      $router->get('user/{id}', 'UserController@get');
+      $router->post('user', 'UserController@create');
+      $router->put('user/{id}', 'UserController@update');
+      $router->delete('user/{id}', 'UserController@delete');
+      $router->get('user/{id}/location', 'UserController@getCurrentLocation');
+      $router->post('user/{id}/location/latitude/{latitude}/longitude/{longitude}',
+         'UserController@setCurrentLocation'
+      );
+   }
+);

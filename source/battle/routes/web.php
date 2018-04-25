@@ -14,3 +14,17 @@
 $router->get('/', function () use ($router) {
     return $router->app->version();
 });
+
+$router->group(
+   [
+      'prefix' => 'api/v1', 
+      'namespace' => '\App\Http\Controllers'
+   ], 
+   function ($router) {
+      $router->get('battle', 'BattleController@index');
+      $router->get('battle/{id}', 'BattleController@get');
+      $router->post('battle', 'BattleController@create');
+      $router->put('battle/{id}', 'BattleController@update');
+      $router->delete('battle/{id}', 'BattleController@delete');
+      $router->post('battle/duel', 'BattleController@duel');
+});

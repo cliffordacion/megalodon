@@ -7,14 +7,33 @@ use Illuminate\Http\Request;
 
 class UserController extends Controller
 {
+    protected $userCache = [
+        1 => [
+            'name' => 'John',
+            'city' => 'Barcelona'
+        ],
+        2 => [
+            'name' => 'Joe',
+            'city' => 'Paris'
+        ],
+        3 => [
+            'name' => 'Cliff',
+            'city' => 'French'
+        ],
+    ];
+
     public function index(Request $request)
     {
-        return response()->json(['method' => 'index']);
+        return response()->json(
+            $this->userCache
+        );
     }
 
     public function get($id)
     {
-        return response()->json(['method' => 'get', 'id' => $id]);
+        return response()->json(
+            $this->userCache[$id]
+        );
     }
 
     public function create(Request $request)
