@@ -23,10 +23,11 @@ $app = new Laravel\Lumen\Application(
     realpath(__DIR__.'/../')
 );
 
-// $app->withFacades();
-
-// $app->withEloquent();
-
+$app->withFacades();
+$app->withEloquent();
+$app->register(Illuminate\Redis\RedisServiceProvider::class);
+$app->configure('database');
+$app->configure('queue');
 /*
 |--------------------------------------------------------------------------
 | Register Container Bindings
@@ -85,6 +86,10 @@ $app->singleton(
 // $app->register(App\Providers\AuthServiceProvider::class);
 // $app->register(App\Providers\EventServiceProvider::class);
 
+
+# Sentry must be registered before routes are included
+$app->register('Sentry\SentryLaravel\SentryLumenServiceProvider');
+
 /*
 |--------------------------------------------------------------------------
 | Load The Application Routes
@@ -101,5 +106,6 @@ $app->router->group([
 ], function ($router) {
     require __DIR__.'/../routes/web.php';
 });
+
 
 return $app;

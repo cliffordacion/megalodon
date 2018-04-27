@@ -2,12 +2,13 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class LocationController extends Controller
 {
     const ROUND_DECIMALS = 2;
-
     const MAX_CLOSEST_SECRETS = 3;
+    const DEFAULT_CACHE_TIME = 1;
 
     public static $conversionRates = [ 
        'km'    => 1.853159616, 
@@ -16,36 +17,47 @@ class LocationController extends Controller
 
     public static $cacheSecrets = [ 
        [ 
-           'id' => 100, 
+           'id' => 1, 
            'name' => 'amber', 
            'location' => ['latitude'  => 42.8805, 'longitude' => -8.54569, 
            'name'      => 'Santiago de Compostela'] 
        ], 
        [ 
-           'id' => 100, 
+           'id' => 2, 
            'name' => 'diamond', 
            'location' => ['latitude'  => 38.2622, 'longitude' => -0.70107,
            'name'      => 'Elche'] 
        ], 
        [ 
-           'id' => 100, 
+           'id' => 3, 
            'name' => 'pearl', 
            'location' => ['latitude'  => 41.8919, 'longitude' => 12.5113, 
            'name'      => 'Rome'] 
        ], 
        [ 
-           'id' => 100, 
+           'id' => 4, 
            'name' => 'ruby', 
            'location' => ['latitude'  => 53.4106, 'longitude' => -2.9779, 
            'name'      => 'Liverpool'] 
        ], 
        [ 
-           'id' => 100, 
+           'id' => 5, 
            'name' => 'sapphire', 
            'location' => ['latitude'  => 50.08804, 'longitude' => 14.42076, 
            'name'      => 'Prague'] 
        ], 
     ]; 
+
+    public function closestSecrets(Request $request, $latitude, $longitude)
+    {
+        $closestSecrets = $this->getClosestSecrets([
+            'latitude'  => $latitude, 
+            'longitude' => $longitude 
+        ]);
+
+        return $closestSecrets;
+    }
+
 
     public function getEuclideanDistance($pointA, $pointB, $unit = 'km')
     {
@@ -79,21 +91,34 @@ class LocationController extends Controller
 
     public function getClosestSecrets($originPoint)
     {
-        $closestSecrets = [];
-        $preprocessClosure = function($item) use($originPoint) {
-            return $this->getDistance($item['location'], $originPoint);
-        };
-
-        $distances = array_map($preprocessClosure, self::$cacheSecrets);
-
-        asort($distances);
-
-        $distances = array_slice($distances, 0, self::MAX_CLOSEST_SECRETS, true);
-
-        foreach ($distances as $key => $distance) {
-            $closestSecrets[] = self::$cacheSecrets[$key];
-        }
-
+        $cacheKey = 'L' . $originPoint['latitude'] . $originPoint['longitude'];
+        $closestSecrets = Cache::Remember(
+            $cacheKey,
+            self::DEFAULT_CACHE_TIME,
+            function() use ($originPoint) {
+                $calculatedClosestSecret = [];
+                $distances = array_map(
+                      function($item) use ($originPoint) {
+                          return $this->getDistance(
+                              $item['location'],
+                              $originPoint
+                          );
+                      },
+                      self::$cacheSecrets
+                );
+                asort($distances);
+                $distances = array_slice(
+                    $distances,
+                    0,
+                    self::MAX_CLOSEST_SECRETS,
+                    true
+                );
+                foreach ($distances as $key => $distance) {
+                    $calculatedClosestSecret[] = self::$cacheSecrets[$key];
+                }
+                return $calculatedClosestSecret;
+            }
+        );
         return $closestSecrets;
     }
 

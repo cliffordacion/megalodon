@@ -23,9 +23,12 @@ $app = new Laravel\Lumen\Application(
     realpath(__DIR__.'/../')
 );
 
-// $app->withFacades();
+$app->withFacades();
+$app->withEloquent();
+$app->configure('database');
+$app->configure('cache');
+$app->register(Illuminate\Redis\RedisServiceProvider::class);
 
-// $app->withEloquent();
 
 /*
 |--------------------------------------------------------------------------

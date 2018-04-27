@@ -17,7 +17,6 @@ $router->get('/', function () use ($router) {
 
 $router->group(
    [  
-      'middware' => 'api_key',
       'prefix' => 'api/v1',
       'namespace' => '\App\Http\Controllers'
    ],
@@ -31,5 +30,6 @@ $router->group(
       $router->post('user/{id}/location/latitude/{latitude}/longitude/{longitude}',
          'UserController@setCurrentLocation'
       );
+      $router->get('user/{id}/wallet', 'UserController@getWallet');
    }
 );

@@ -17,7 +17,7 @@ class CreateSecretsTable extends Migration
             $table->increments('id');
             $table->string('name', 255);
             $table->double('latitude');
-            $table->double('longituted')
+            $table->double('longitude')
                 ->nullable();
             $table->string('location_name', 255);
             $table->timestamps();

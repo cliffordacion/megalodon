@@ -59,6 +59,7 @@
                - source_location 
             links: 
                 - autodiscovery
+                - microservice_location_redis
             expose:
                 - 9000
             environment:
@@ -78,6 +79,15 @@
             ports:
                 - 8082:80
                 - 9092:9090
+
+        microservice_location_redis:
+            build: ./microservices/location/redis/
+            links:
+                - autodiscovery
+            expose:
+                - 6379
+            ports:
+                - 6380:6379
         
         ##
         # Secret Microservice
@@ -129,6 +139,7 @@
             links:
                 - autodiscovery
                 - microservice_secret_nginx
+                - microservice_user_redis
             expose:
                 - 9000
             environment:
@@ -148,6 +159,72 @@
             ports:
                 - 8084:80
                 - 9094:9090
+
+        microservice_user_redis:
+            build: ./microservices/user/redis/
+            links:
+                - autodiscovery
+            expose:
+                - 6379
+            ports:
+                - 6379:6379
+        ###
+        #   Sentry
+        ##
+        sentry_redis:
+            image: redis
+            expose:
+                - 6379
+
+        sentry_postgres:
+            image: postgres
+            environment:
+                - POSTGRES_PASSWORD=sentry
+                - POSTGRES_USER=sentry
+            volumes:
+                - /var/lib/postgresql/data
+            expose:
+                - 5432
+
+        sentry:
+            image: sentry
+            links:
+                - sentry_redis
+                - sentry_postgres
+            ports:
+                - 9876:9000
+            environment:
+                SENTRY_SECRET_KEY: mymicrosecret
+                SENTRY_POSTGRES_HOST: sentry_postgres
+                SENTRY_REDIS_HOST: sentry_redis
+                SENTRY_DB_USER: sentry
+                SENTRY_DB_PASSWORD: sentry
+
+        sentry_celery-beat:
+            image: sentry
+            links:
+                - sentry_redis
+                - sentry_postgres
+            command: sentry celery beat
+            environment:
+                SENTRY_SECRET_KEY: mymicrosecret
+                SENTRY_POSTGRES_HOST: sentry_postgres
+                SENTRY_REDIS_HOST: sentry_redis
+                SENTRY_DB_USER: sentry
+                SENTRY_DB_PASSWORD: sentry
+        
+        sentry_celery-worker:
+            image: sentry
+            links:
+                - sentry_redis
+                - sentry_postgres
+            command: sentry celery worker
+            environment:
+                SENTRY_SECRET_KEY: mymicrosecret
+                SENTRY_POSTGRES_HOST: sentry_postgres
+                SENTRY_REDIS_HOST: sentry_redis
+                SENTRY_DB_USER: sentry
+                SENTRY_DB_PASSWORD: sentry
 
         ##
         #  Source Containers

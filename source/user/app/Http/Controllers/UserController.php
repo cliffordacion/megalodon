@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ConnectException;
+use App\Jobs\GiftJob;
+use Log;
 
 class UserController extends Controller
 {
@@ -38,6 +41,7 @@ class UserController extends Controller
 
     public function create(Request $request)
     {
+        $this->dispatch(new GiftJob());
         return response()->json(['method' => 'create']);
     }
 
@@ -67,5 +71,16 @@ class UserController extends Controller
             'latitude' => $latitude,
             'longitude' => $longitude
         ]);
+    }
+
+    public function getWallet($id)
+    {
+        $client = new Client(['verify' => false]);
+        try {
+            $remoteCall = $client->get('http://microservice_secret_nginx/api/v1/secret/1');
+            return $remoteCall;
+        } catch (Exception $e) {
+            throw $e;
+        }
     }
 }
