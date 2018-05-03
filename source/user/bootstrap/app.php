@@ -28,6 +28,8 @@ $app->withEloquent();
 $app->register(Illuminate\Redis\RedisServiceProvider::class);
 $app->configure('database');
 $app->configure('queue');
+$app->configure('sentry');
+$app->configure('logging');
 /*
 |--------------------------------------------------------------------------
 | Register Container Bindings
@@ -82,13 +84,13 @@ $app->singleton(
 |
 */
 
+$app->register(App\Providers\AuthServiceProvider::class);
+$app->register(\Sentry\SentryLaravel\SentryLumenServiceProvider::class);
 // $app->register(App\Providers\AppServiceProvider::class);
-// $app->register(App\Providers\AuthServiceProvider::class);
 // $app->register(App\Providers\EventServiceProvider::class);
 
 
 # Sentry must be registered before routes are included
-$app->register('Sentry\SentryLaravel\SentryLumenServiceProvider');
 
 /*
 |--------------------------------------------------------------------------

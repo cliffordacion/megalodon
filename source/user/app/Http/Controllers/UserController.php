@@ -27,6 +27,8 @@ class UserController extends Controller
 
     public function index(Request $request)
     {
+        Log::warning('CLIFFORD');
+        Log::info('SENTRY PASOK NA!');
         return response()->json(
             $this->userCache
         );

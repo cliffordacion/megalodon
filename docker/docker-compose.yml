@@ -140,6 +140,7 @@
                 - autodiscovery
                 - microservice_secret_nginx
                 - microservice_user_redis
+                - sentry
             expose:
                 - 9000
             environment:
@@ -200,12 +201,12 @@
                 SENTRY_DB_USER: sentry
                 SENTRY_DB_PASSWORD: sentry
 
-        sentry_celery-beat:
+        sentry_celery_beat:
             image: sentry
             links:
                 - sentry_redis
                 - sentry_postgres
-            command: sentry celery beat
+            command: sentry run cron
             environment:
                 SENTRY_SECRET_KEY: mymicrosecret
                 SENTRY_POSTGRES_HOST: sentry_postgres
@@ -213,12 +214,12 @@
                 SENTRY_DB_USER: sentry
                 SENTRY_DB_PASSWORD: sentry
         
-        sentry_celery-worker:
+        sentry_celery_worker:
             image: sentry
             links:
                 - sentry_redis
                 - sentry_postgres
-            command: sentry celery worker
+            command: sentry run worker
             environment:
                 SENTRY_SECRET_KEY: mymicrosecret
                 SENTRY_POSTGRES_HOST: sentry_postgres
