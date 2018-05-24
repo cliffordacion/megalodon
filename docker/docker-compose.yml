@@ -18,6 +18,33 @@
                 - 8500:8500
             dns:
                 - 127.0.0.1
+
+        ###
+        # Telemetry
+        ###
+        telemetry:
+            build: ./telemetry/
+            links:
+                - autodiscovery
+            expose:
+                - 9090
+            ports:
+                - 9090:9090
+
+        ###
+        # Scope
+        ###
+        scope:
+            image: weaveworks/scope:1.9.0
+            network_mode: "host"
+            pid: "host"
+            privileged: true
+            labels:
+                - "works.weave.role=system"
+            volumes:
+                - "/var/run/docker.sock:/var/run/docker.sock:rw"
+            command:
+                - "--probe.docker=true"
         
         ##
         #  Battle Microservice

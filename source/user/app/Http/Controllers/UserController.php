@@ -36,6 +36,11 @@ class UserController extends Controller
 
     public function get($id)
     {
+        $str = 'a,b,c,1,2,3';
+        $arrayOfCharacter = explode(',', $str );
+
+        var_dump($arrayOfCharacter);
+        exit;
         return response()->json(
             $this->userCache[$id]
         );

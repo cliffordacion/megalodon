@@ -17,8 +17,7 @@ connections_load() {
     local scraped=$(curl -s --fail localhost/nginx-health)
     local active=$(echo ${scraped} | awk '/Active connections/{print $3}')
     local waiting=$(echo ${scraped} | awk '/Reading/{print $6}')
-    local workers=$(echo $(cat /etc/nginx/nginx.conf | perl -n -e'/worker_connections *(\d+)/ && print $1')
-)
+    local workers=$(echo $(cat /etc/nginx/nginx.conf | perl -n -e'/worker_connections *(\d+)/ && print $1'))
     echo $(echo "scale=4; (${active} - ${waiting}) / ${workers}" | bc)
 }
 
