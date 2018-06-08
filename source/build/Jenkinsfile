@@ -1,0 +1,377 @@
+#!/usr/bin/env groovy
+
+pipeline {
+    agent any 
+
+    //options {
+    //    skipDefaultCheckout true
+    //}
+    environment {
+        GitUrl = 'git@git.rarejob.com:app-ph/deborah.git'
+        GitCredentialId = '7e8704d1-beb0-478f-9f37-60035c860851'
+        SERVER_MODE='development'
+        MYSQL_MASTER_HOST='10.0.8.45'
+        MYSQL_MASTER_USER='jenkins'
+        MYSQL_MASTER_PASS='jenkins'
+        MYSQL_SLAVE_HOST='10.0.8.45'
+        MYSQL_SLAVE_USER='jenkins'
+        MYSQL_SLAVE_PASS='jenkins'
+        MYSQL_DB_NAME='jenkins-develop'
+    }
+
+    stages {
+        stage('Initial checkout'){
+            steps{
+                node('atweb') {
+                    script{
+                        sh 'env'
+                        sh 'printenv'
+                        
+                        //checkout scm
+                        git url: Giturl, branch: GIT_BRANCH 
+
+
+                    }   
+                    
+                }
+            }
+        }
+        stage('Staging Selection'){
+            when { branch "staging" }
+            steps {
+                script {
+                    env.STAGING_SERVER = input message: 'User input required', ok: 'Deploy!',
+                            parameters: [choice(name: 'RELEASE_SCOPE', choices: 'ktweb01\nktweb02', description: 'Where to deploy?')]
+
+                    if(STAGING_SERVER=='ktweb01'){
+                        env.STAGING_URL = 'https://stg.rarejob.com.ph/'
+                    }
+                    else if(STAGING_SERVER=='ktweb02'){
+                        env.STAGING_URL = 'https://stg1.rarejob.com.ph/'
+                    }
+
+                }
+                echo "${env.STAGING_SERVER}"
+            }
+        }
+
+        stage('Prod Input'){
+            when { branch "master" }
+            steps {
+                node('atweb') {
+                    script {
+                        test = input message: "Please input release details:", ok: "OK", parameters: [
+     [$class: 'TextParameterDefinition', defaultValue: '', description: 'Release GRM Number', name: 'deborahReleaseTicket'],
+     [$class: 'TextParameterDefinition', defaultValue: '', description: 'Feature Releases List', name: 'featureReleases']
+    ]
+                        env.deborahReleaseTicket = test.deborahReleaseTicket
+                        env.featureReleases = test.featureReleases
+
+                        echo "${env.deborahReleaseTicket}"
+                        echo "${env.featureReleases}"
+
+                        wrap([$class: 'BuildUser']) {
+                            try{
+                                env.BUILD_USER = BUILD_USER
+                            }
+                            catch(err) {
+                                env.BUILD_USER = 'jenkins'
+                            }
+                            sh """
+                                python ${env.WORKSPACE}/tutorial/protected/build/redmine_updater.py --message "${env.BUILD_USER} initiated a release in DEBORAH : ${env.BUILD_URL}" --redmine ${env.deborahReleaseTicket}
+                            """
+                        }
+
+                        sh 'echo ${BUILD_USER}'
+                    }                
+                }
+
+            }
+        }
+        stage('Merge master to develop') {
+            when { branch "master" }
+            steps {     
+                script {           
+                    node('atweb') {     
+                        git url: Giturl, branch: GIT_BRANCH                  
+                        def commit = sh (returnStdout: true, script: '''
+                            master=$(git rev-parse refs/remotes/origin/master^{commit})
+                            develop=$(git rev-parse refs/remotes/origin/develop^{commit})
+                            if git branch | egrep 'develop'; then
+                                git branch -D develop
+                            fi    
+                            git checkout -b develop $develop
+                            git merge --no-ff --no-commit $master
+                            git commit --allow-empty -m "Merge ${master} (master) to ${develop} (develop)"
+                            git push origin $(git rev-parse HEAD):develop
+                            git branch
+                            echo $(git rev-parse refs/remotes/origin/develop^{commit})
+                        ''').split()
+
+                        env.newCommit=commit[-1]
+                    }    
+                }
+                   
+            }    
+        }
+        
+        stage('Prepare ATWEB environment') {
+            when { branch "master" }
+            steps {                
+                script {
+                    node('atweb') {
+                        echo "Working on ${env.newCommit}"
+                        git url: Giturl, branch: 'develop'
+                        sh """
+                            git checkout -f ${env.newCommit}
+                            mkdir -p $WORKSPACE/tutorial/protected/runtime
+                            chmod -R 777 $WORKSPACE/tutorial/protected/runtime
+                            cd $WORKSPACE/tutorial/protected/tests
+                            composer install
+                            composer require overtrue/phplint
+                            rm -rf reports
+                            mkdir reports
+                        """
+                    }
+                }
+            }
+        }
+        stage("Syntax check"){            
+            when { branch "master" }
+            steps {
+                node('atweb'){   
+                    sh '''   
+                        cd $WORKSPACE/tutorial/protected/tests                      
+                        ./vendor/bin/phplint
+                    '''
+                }
+            }    
+        }
+        stage('Reloading Db schema') {
+            when { branch "master" }
+            steps {
+                node('atweb') {
+                    sh '''
+                        cd $WORKSPACE/tutorial/protected/tests
+                        sh build/reloadDatabaseSchema
+                    '''
+                    echo "Delayed by 2 days from prod schema"
+                }
+            }
+        }
+        stage('Core Library Unit tests') {
+            when { branch "master" }
+            steps {
+                node('atweb') {
+                    sh '''
+                        set +x
+                        php -v
+                        cd $WORKSPACE/tutorial/Core
+                        php vendor/codeception/codeception/codecept run --coverage-html --xml=core_report.xml
+                    '''
+                }
+            }
+        }
+        stage('Codeception unit & functional tests') {
+            when { branch "master" }
+            steps {
+                node('atweb') {
+                    sh '''
+                        set +x
+                        php -v
+                        cd $WORKSPACE/tutorial/protected/codeception
+                        php vendor/codeception/codeception/codecept run functional,unit --coverage-html --xml=codeception_report.xml
+                    '''
+                }
+            }
+        }
+
+        stage('Approve?') {
+            when { branch "master" }
+
+            steps {
+
+                script {
+                    sh """
+                        python ${env.WORKSPACE}/tutorial/protected/build/chatwork_msg.py --message '[To:1234333] Aaron Medina\n\nDEBORAH production release is now ready for approval:\n${env.BUILD_URL}\n\nFor more details, kindly check this ticket: \nhttps://redmine.rarejob.ph/issues/${env.deborahReleaseTicket}'  --groupid 75337962
+                    """    
+
+                    def result = """
+                            Initiated by: ${env.BUILD_USER}
+Redmine Release Ticket: https://redmine.rarejob.ph/issues/${env.deborahReleaseTicket}
+Feature Details:
+${env.featureReleases}
+                        """
+                    echo result 
+                }
+
+                script {
+                    env.APPROVER = input message: "Do you want to approve this release?", ok: "OK", submitter: "christian.gabo,aaron.medina", submitterParameter: "submitter"
+                }
+
+                echo "${env.APPROVER}"
+
+                sh """
+                    python ${env.WORKSPACE}/tutorial/protected/build/redmine_updater.py --message "${env.APPROVER} approved DEBORAH release : ${env.BUILD_URL}" --redmine ${env.deborahReleaseTicket}
+                """
+            }
+        }
+        stage('Merge develop to master') {
+            when { branch "master" }
+            steps {
+                script {
+                    node('atweb') {
+                        echo "Merging ${env.newCommit} to master"
+                        git url: Giturl, branch: 'master'
+
+                        sh """
+                            echo ${env.newCommit}
+                            git merge --no-ff ${env.newCommit}
+                            git push origin master
+                        """
+
+                        sh """
+                            python ${env.WORKSPACE}/tutorial/protected/build/chatwork_msg.py --message 'Good day! (coffee)\n\nFYI: [To:1398676] Marvin | Marvin Relente, [To:2055394] Keng | Kezaiah Monzon, [To:1234333] Aaron Medina\n\nTutorweb (Deborah) : ${env.featureReleases}' --groupid 49333549
+                        """
+                    }    
+                }
+            }
+        }
+        stage('Deploy?') {
+            when { branch "master" }
+        
+            steps {
+                
+                script {
+                    env.DEPLOYER = input message: "Do you want to deploy this release now?", ok: "OK", submitter: "christian.gabo,aaron.medina,robin.deguzman,sigfred.balatan,french.dacion,prince.diana,jerome.sabidong", submitterParameter: "submitter"
+                }
+
+                echo "${env.DEPLOYER}"
+
+            }
+        }
+
+        stage('Deploy Code') {
+            steps {
+                script{
+                    if(GIT_BRANCH=='master'){
+                        echo 'deploying master branch to Production'                
+                        sshagent (credentials: ['829cf9a1-99ff-48f3-9acb-462fed03f934']) {
+                            sh """
+                                ssh -o StrictHostKeyChecking=no -l ph_deployer 133.242.62.103 'source .bash_profile && cd capistrano-git/config/deploy && /usr/local/rbenv/shims/cap stweb deploy && cd /home/ph_deployer/log/web && cat `ls -t1 | head -n 1`'
+                            """
+                        }
+
+                        sh """
+                            python ${env.WORKSPACE}/tutorial/protected/build/redmine_updater.py --message "${env.DEPLOYER} has released DEBORAH in production : ${env.BUILD_URL}" --redmine ${env.deborahReleaseTicket}
+                        """
+                    }
+                    else if(GIT_BRANCH=='staging'){
+                        echo 'deploying branch to staging'                
+                        sshagent (credentials: ['829cf9a1-99ff-48f3-9acb-462fed03f934']) {
+                            sh """
+                                ssh -o StrictHostKeyChecking=no -l ph_deployer 133.242.62.103 'source .bash_profile && cd capistrano-git/config/deploy && /usr/local/rbenv/shims/cap ${env.STAGING_SERVER} deploy && cd /home/ph_deployer/log/web && cat `ls -t1 | head -n 1`'
+                            """
+                        }
+                    }
+
+                }
+                
+            }
+        }
+        stage('Tag release') {
+            when { branch "master" }
+
+            steps {
+                script{
+                    node('atweb') {
+
+                        echo "${env.APPROVER}"
+                        sh '''
+                            cat /dev/null > tags.properties
+
+                            TAG="$(date +'%Y%m%d%H%M%S')-release"
+                            TAG_NAME="$(date +'%b %d, %Y %H:%M:%S') release"
+                            
+                            git tag -l ${TAG_NAME}
+                            git tag -a -f -m "${TAG_NAME}" ${TAG}  
+                            git push origin --tags
+                        '''
+                    }
+                }
+            }    
+        }
+        
+        stage('End Pipeline') {
+            steps{
+                echo "Pipeline Finished."
+                script {
+                    if(GIT_BRANCH == 'master'){
+                        def result = """
+                            Initiated by: ${env.BUILD_USER}
+Approved by: ${env.APPROVER}
+Deployed by: ${env.DEPLOYER}
+Redmine Release Ticket: https://redmine.rarejob.ph/issues/${env.deborahReleaseTicket}
+Feature Details:
+${env.featureReleases}
+                        """
+                        echo result
+                    }
+                }    
+            }
+        }
+        
+
+    }
+
+    post {
+
+        always {
+            node('atweb') {
+                script {
+                    if(GIT_BRANCH == 'master'){
+                        junit 'tutorial/reports/**/*.xml'
+
+                        publishHTML target: [
+                            allowMissing: false,
+                            alwaysLinkToLastBuild: false,
+                            keepAll: true,
+                            reportDir: 'tutorial/reports/codeception/coverage',
+                            reportFiles: 'index.html',
+                            reportName: 'Codeception Coverage Report'
+                        ]
+
+                        publishHTML target: [
+                            allowMissing: false,
+                            alwaysLinkToLastBuild: false,
+                            keepAll: true,
+                            reportDir: 'tutorial/reports/core/coverage',
+                            reportFiles: 'index.html',
+                            reportName: 'Core Coverage Report'
+                        ]
+                    }
+                }    
+            }
+        }
+        success {
+            echo 'build successful...'
+            
+            sh "printenv" 
+            script {
+                if(GIT_BRANCH == 'master'){                
+                    
+                    sh """
+                        python ${env.WORKSPACE}/tutorial/protected/build/chatwork_msg.py --message '[info][title]${env.JOB_NAME} ${env.BUILD_DISPLAY_NAME} (${GIT_BRANCH})[/title] Release Result: SUCCESS\nRelease log: ${env.BUILD_URL} \n\nPlease...\n- monitor https://zabbix.rarejob.co.jp for errors or increased load\n- change GRM issue tickets from \"for release\" to \"done\" after checking at prod\n- close release ticket after all tickets have been "done" \n[/info]' --groupid 49333549
+                    """                                                         
+                }  
+                else if(GIT_BRANCH == 'staging'){
+                    sh """
+                        python ${env.WORKSPACE}/tutorial/protected/build/chatwork_msg.py --message '(*) (*) (*) (*) (*) (*) (*) (*)\n[info][title]Eikaiwa Frontend Staging (Tutor Website ) [/title]\ntests passed!\nfiles have been deployed to the Staging Server\n- ${env.STAGING_URL}[/info]\n${env.BUILD_URL}\nbuilt using ${env.GIT_BRANCH}\n(*) (*) (*) (*) (*) (*) (*) (*)' --groupid 48587293
+
+                    """
+                }
+            }    
+        }
+
+    }
+}
